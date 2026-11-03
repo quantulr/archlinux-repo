@@ -61,7 +61,7 @@ jobs:
         run: |
           pacman-key --init
           pacman-key --populate archlinux
-          pacman -Syu --noconfirm --needed git go curl jq libarchive
+          pacman -Syu --noconfirm --needed git go curl jq libarchive gnupg
       - name: Create build user
         run: |
           useradd -m builder
@@ -99,8 +99,19 @@ jobs:
           if [ "${#install[@]}" -gt 0 ]; then
             pacman -S --needed --noconfirm "${install[@]}"
           fi
+          keys=$(sed -n '/^validpgpkeys=(/,/)/p' /build/src/PKGBUILD | grep -oE '[0-9A-Fa-f]{16,40}' || true)
+          extra=()
+          for key in $keys; do
+            if ! su - builder -c "gpg --batch --keyserver keyserver.ubuntu.com --recv-keys '$key'" >/dev/null 2>&1; then
+              if ! su - builder -c "gpg --batch --keyserver hkps://keys.openpgp.org --recv-keys '$key'" >/dev/null 2>&1; then
+                echo "::warning::could not import PGP key $key; skipping signature checks"
+                extra+=(--skippgpcheck)
+                break
+              fi
+            fi
+          done
           chown -R builder:builder /build/src
-          su - builder -c 'cd /build/src && makepkg -f --noconfirm --nodeps --nocheck'
+          su - builder -c "cd /build/src && makepkg -f --noconfirm --nodeps --nocheck ${extra[*]}"
           find /build/src -maxdepth 1 -name '*.pkg.tar.zst' ! -name '*-debug-*.pkg.tar.zst' -exec cp -v {} /out/ \;
       - name: Clone mygo project
         if: matrix.package.source == 'github' && matrix.package.method == 'mygo'
