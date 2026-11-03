@@ -84,7 +84,7 @@ sudo pacman -U https://github.com/quantulr/archlinux-repo/releases/download/pack
 - `manifest.json`：release 的完整快照，列出每个包的 `name`、`pkgname`、`version`、`arch`、`filename`、`sha256`、`size`、`built_at`、`asset_id`、`asset_updated_at`、`url`。本地同步程序应以它为准：
   `https://github.com/quantulr/archlinux-repo/releases/download/packages/manifest.json`
 - `SHA256SUMS`：由 manifest 生成，覆盖 release 中所有包。
-- `*.pkg.tar.zst`：每个包只保留最新版本；更新后不再被 manifest 引用的旧资产会自动删除，因此 release 不保留历史版本（版本历史仍可在 git 中查看）。
+- `*.pkg.tar.zst`：每个包只保留最新版本；更新后不再被 manifest 引用的旧资产会自动删除，因此 release 不保留历史版本（版本历史仍可在 git 中查看）。带 epoch 的包文件名中的 `:` 会替换为 `_` 以兼容 GitHub Artifacts，版本仍以包内 `.PKGINFO` 为准。
 
 ## 示例
 

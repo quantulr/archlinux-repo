@@ -133,6 +133,17 @@ jobs:
           curl -fL --retry 3 --retry-delay 5 \
             -o "/out/$PKG_ASSET_NAME" \
             "$PKG_ASSET_URL"
+      - name: Normalize package filenames
+        run: |
+          set -euo pipefail
+          for pkgfile in /out/*.pkg.tar.zst; do
+            [ -e "$pkgfile" ] || continue
+            name=$(basename "$pkgfile")
+            safe=${name//:/_}
+            if [ "$name" != "$safe" ]; then
+              mv -v "$pkgfile" "/out/$safe"
+            fi
+          done
       - name: Record built packages
         run: |
           set -euo pipefail
