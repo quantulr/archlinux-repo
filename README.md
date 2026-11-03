@@ -47,7 +47,7 @@ packages/
 
 workflow 在以下情况运行：
 
-- 每天 UTC 00:00 定时检查上游版本
+- 每小时（UTC 整点）定时检查上游版本
 - 手动触发（Actions → Build packages → Run workflow）
 - `packages/**`、`.github/scripts/**` 或 workflow 文件变更时
 
