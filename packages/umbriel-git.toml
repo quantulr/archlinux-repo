@@ -1,0 +1,6 @@
+# AUR 来源（-git 包：按上游 commit 检测更新）
+[package]
+name = "umbriel-git"
+source = "aur"
+url = "https://aur.archlinux.org/umbriel-git.git"
+version = "1:0.1.0.r1503.1968031-1"

@@ -12,7 +12,9 @@ import fnmatch
 import json
 import os
 import re
+import subprocess
 import sys
+import tempfile
 import tomllib
 import urllib.error
 import urllib.parse
@@ -71,6 +73,60 @@ def repo_version(version):
     return version.rsplit("-", 1)[0]
 
 
+def vcs_source(aur_url):
+    """The git URL and ref of an AUR package's first git+ source, if any."""
+    with tempfile.TemporaryDirectory() as tmp:
+        result = subprocess.run(
+            ["git", "clone", "--quiet", "--depth", "1", aur_url, tmp],
+            text=True,
+            capture_output=True,
+            timeout=60,
+        )
+        if result.returncode != 0:
+            return None
+        srcinfo = Path(tmp) / ".SRCINFO"
+        if not srcinfo.exists():
+            return None
+        for line in srcinfo.read_text(errors="replace").splitlines():
+            line = line.strip()
+            if not line.startswith("source"):
+                continue
+            _, sep, value = line.partition(" = ")
+            if not sep:
+                continue
+            if "::" in value:
+                value = value.split("::", 1)[1]
+            if not value.startswith("git+"):
+                continue
+            value = value[len("git+"):]
+            url, _, fragment = value.partition("#")
+            url = url.split("?", 1)[0]
+            ref = "HEAD"
+            if fragment.startswith("branch="):
+                ref = "refs/heads/" + fragment[len("branch="):]
+            elif fragment.startswith("tag="):
+                ref = "refs/tags/" + fragment[len("tag="):]
+            return url, ref
+    return None
+
+
+def latest_vcs_revision(url, ref):
+    """The commit the ref points to, or "" when it cannot be queried."""
+    try:
+        result = subprocess.run(
+            ["git", "ls-remote", url, ref],
+            text=True,
+            capture_output=True,
+            timeout=60,
+        )
+    except subprocess.TimeoutExpired:
+        return ""
+    if result.returncode != 0:
+        return ""
+    lines = [line for line in result.stdout.splitlines() if line.strip()]
+    return lines[0].split()[0] if lines else ""
+
+
 def main():
     matrix = []
 
@@ -105,8 +161,45 @@ def main():
                 continue
             upstream = results[0]["Version"]
             entry["upstream"] = upstream
-            if upstream != recorded:
-                needed = True
+
+            # AUR's version of a -git package is the pkgver in .SRCINFO,
+            # which does not move with upstream commits. Compare the
+            # upstream VCS revision instead.
+            vcs_handled = False
+            if name.endswith("-git"):
+                aur_url = pkg.get("url") or f"https://aur.archlinux.org/{name}.git"
+                try:
+                    source_info = vcs_source(aur_url)
+                except (subprocess.TimeoutExpired, OSError) as err:
+                    warn(f"{name}: could not read the AUR repo: {err}")
+                    source_info = None
+                if source_info:
+                    url, ref = source_info
+                    latest = latest_vcs_revision(url, ref)
+                    if latest:
+                        vcs_handled = True
+                        entry["upstream"] = latest
+                        recorded_rev = pkg.get("vcs_revision", "")
+                        if (
+                            not pkg.get("last_built")
+                            or not recorded_rev
+                            or latest != recorded_rev
+                        ):
+                            needed = True
+                    else:
+                        warn(
+                            f"{name}: could not query {url}; "
+                            "falling back to the AUR version"
+                        )
+
+            if not vcs_handled:
+                if name.endswith("-git") and pkg.get("last_built"):
+                    # AUR's version does not track upstream commits; a
+                    # version comparison here would rebuild every run.
+                    warn(f"{name}: could not resolve the VCS source; skipping this run")
+                    continue
+                if upstream != recorded:
+                    needed = True
 
         elif source == "github":
             method = pkg.get("method")

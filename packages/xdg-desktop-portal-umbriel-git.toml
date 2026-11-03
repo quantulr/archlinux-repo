@@ -1,0 +1,6 @@
+# AUR 来源（-git 包：按上游 commit 检测更新）
+[package]
+name = "xdg-desktop-portal-umbriel-git"
+source = "aur"
+url = "https://aur.archlinux.org/xdg-desktop-portal-umbriel-git.git"
+version = "0.1.0.r70.79f0875-1"

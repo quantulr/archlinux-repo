@@ -98,6 +98,8 @@ def read_current():
             entry = dict(package)
             entry["name"] = meta["name"]
             entry["built_at"] = meta.get("built_at", "")
+            if meta.get("vcs_revision"):
+                entry["vcs_revision"] = meta["vcs_revision"]
             current[entry["pkgname"]] = entry
     return current
 

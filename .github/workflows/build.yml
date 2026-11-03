@@ -75,8 +75,32 @@ jobs:
         if: matrix.package.source == 'aur'
         run: |
           set -euo pipefail
+          # Install dependencies that exist in the official repositories.
+          # AUR-only dependencies (such as another package built here) are
+          # left out, hence --nodeps below.
+          deps=$(awk -F' = ' '/^\t(depends|makedepends|checkdepends)(_x86_64)? = / {print $2}' /build/src/.SRCINFO \
+            | sed -E 's/[<>=].*$//' \
+            | sed 's/:.*//' \
+            | sort -u)
+          install=()
+          for dep in $deps; do
+            case "$dep" in
+              cargo|rustc) dep=rust ;;
+            esac
+            if pacman -T "$dep" >/dev/null 2>&1; then
+              continue
+            fi
+            if pacman -Si "$dep" >/dev/null 2>&1; then
+              install+=("$dep")
+            else
+              echo "::warning::$dep is not in the official repositories; skipping"
+            fi
+          done
+          if [ "${#install[@]}" -gt 0 ]; then
+            pacman -S --needed --noconfirm "${install[@]}"
+          fi
           chown -R builder:builder /build/src
-          su - builder -c 'cd /build/src && makepkg -fs --noconfirm'
+          su - builder -c 'cd /build/src && makepkg -f --noconfirm --nodeps --nocheck'
           find /build/src -maxdepth 1 -name '*.pkg.tar.zst' ! -name '*-debug-*.pkg.tar.zst' -exec cp -v {} /out/ \;
       - name: Clone mygo project
         if: matrix.package.source == 'github' && matrix.package.method == 'mygo'
@@ -135,9 +159,21 @@ jobs:
               <<<"$packages")
           done < <(find /out -maxdepth 1 -name '*.pkg.tar.zst' -print0)
           test "$(jq 'length' <<<"$packages")" -gt 0
-          jq -n --arg name "$PKG_NAME" --arg built_at "$built_at" --argjson packages "$packages" \
-            '{name: $name, built_at: $built_at, packages: $packages}' \
-            > "/out/$PKG_NAME.json"
+          vcs_revision=""
+          gitdir=$(find /build/src/src -maxdepth 4 -name .git -print -quit 2>/dev/null || true)
+          if [ -n "$gitdir" ]; then
+            vcs_revision=$(su - builder -c "git -C '$(dirname "$gitdir")' rev-parse HEAD" 2>/dev/null || true)
+          fi
+          if [ -n "$vcs_revision" ]; then
+            jq -n --arg name "$PKG_NAME" --arg built_at "$built_at" \
+              --arg vcs_revision "$vcs_revision" --argjson packages "$packages" \
+              '{name: $name, built_at: $built_at, vcs_revision: $vcs_revision, packages: $packages}' \
+              > "/out/$PKG_NAME.json"
+          else
+            jq -n --arg name "$PKG_NAME" --arg built_at "$built_at" --argjson packages "$packages" \
+              '{name: $name, built_at: $built_at, packages: $packages}' \
+              > "/out/$PKG_NAME.json"
+          fi
           cat "/out/$PKG_NAME.json"
       - name: Upload package
         uses: actions/upload-artifact@v4

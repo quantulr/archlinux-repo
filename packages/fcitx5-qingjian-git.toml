@@ -1,0 +1,6 @@
+# AUR 来源（-git 包：按上游 commit 检测更新）
+[package]
+name = "fcitx5-qingjian-git"
+source = "aur"
+url = "https://aur.archlinux.org/fcitx5-qingjian-git.git"
+version = "0.3.2.r5.g3d5fd2df-1"

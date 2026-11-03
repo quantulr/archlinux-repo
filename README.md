@@ -6,10 +6,13 @@
 
 ```
 packages/
+├── bili-fm.toml
 ├── claude-code.toml
 ├── dbx-bin.toml
+├── fcitx5-qingjian-git.toml
 ├── kero.toml
-└── bili-fm.toml
+├── umbriel-git.toml
+└── xdg-desktop-portal-umbriel-git.toml
 .github/
 ├── scripts/
 │   ├── check_updates.py
@@ -29,6 +32,7 @@ packages/
 | `source` | 是 | 来源类型：`aur` 或 `github` |
 | `version` | 是 | 最近记录的版本，格式 `pkgver-pkgrel`；构建成功后由 workflow 回写 |
 | `last_built` | 可选 | 最近一次成功构建的时间（ISO 8601），由 workflow 写入；缺失时会强制构建 |
+| `vcs_revision` | 可选 | `-git` AUR 包最近构建的上游 commit；由 workflow 写入 |
 | `url` | AUR 必填 | AUR git 地址 |
 | `repo` | GitHub 必填 | GitHub 仓库地址 |
 | `method` | GitHub 必填 | `mygo`：源码构建，`mygo build` 生成 PKGBUILD；`prebuilt`：从 release 下载现成的 `pkg.tar.zst` |
@@ -37,11 +41,21 @@ packages/
 
 ## 构建方式
 
-- **AUR**：`git clone <url>`，在仓库目录执行 `makepkg`。
+- **AUR**：`git clone <url>`，安装 `depends`/`makedepends` 中属于官方仓库的包后执行 `makepkg`；AUR 内部依赖在构建时跳过，运行时由本仓库提供。
 - **github + mygo**：clone `repo`，执行 `go tool mygo build -platform linux/amd64 -o /build/out`，找到生成的 `PKGBUILD` 并执行 `makepkg`。
 - **github + prebuilt**：查询最新 release，下载名称匹配 `asset` 的 `pkg.tar.zst`，直接上传到发布。
 
 > 注意：`kero` 由 mygo 源码构建生成，与 AUR 的 `kero-bin` 冲突，安装前需先移除 `kero-bin`。
+
+### `-git` AUR 包
+
+AUR RPC 返回的 `version` 来自 `.SRCINFO`，不会随上游新 commit 变化。对名称以 `-git` 结尾的 AUR 包，workflow 会：
+
+1. 克隆 AUR 仓库并解析 `.SRCINFO` 中第一个 `git+` 源；
+2. 用 `git ls-remote` 获取该源最新 commit；
+3. 与 TOML 中的 `vcs_revision` 比较，不同则构建。
+
+首次构建或缺少 `vcs_revision` 时会强制构建，成功后写回 `version` 和 `vcs_revision`。
 
 ## 自动构建与发布
 
