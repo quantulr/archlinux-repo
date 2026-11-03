@@ -1,0 +1,6 @@
+# AUR 来源：clone AUR 仓库后直接 makepkg
+[package]
+name = "fnm-bin"
+source = "aur"
+url = "https://aur.archlinux.org/fnm-bin.git"
+version = "1.39.0-1"

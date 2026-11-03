@@ -1,0 +1,9 @@
+# release 中提供现成的 pkg.tar.zst，直接下载后发布，不构建
+[package]
+name = "bili-fm"
+source = "github"
+method = "prebuilt"
+repo = "https://github.com/vst93/bili-fm"
+asset = "*-linux-x86_64.pkg.tar.zst"
+tag_prefix = "mygo-v"
+version = "3.1.16-1"

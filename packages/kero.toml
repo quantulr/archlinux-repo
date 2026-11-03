@@ -1,0 +1,7 @@
+# mygo 源码构建：mygo build 会在 Linux 产物目录生成 PKGBUILD
+[package]
+name = "kero"
+source = "github"
+method = "mygo"
+repo = "https://github.com/egoist/kero"
+version = "2.1.31-1"
