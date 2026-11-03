@@ -6,7 +6,7 @@
 
 ```
 packages/
-├── fnm-bin.toml
+├── claude-code.toml
 ├── dbx-bin.toml
 ├── kero.toml
 └── bili-fm.toml
@@ -78,10 +78,10 @@ AUR：
 
 ```toml
 [package]
-name = "fnm-bin"
+name = "claude-code"
 source = "aur"
-url = "https://aur.archlinux.org/fnm-bin.git"
-version = "1.39.0-1"
+url = "https://aur.archlinux.org/claude-code.git"
+version = "2.1.317-1"
 ```
 
 GitHub mygo 源码构建：

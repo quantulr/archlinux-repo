@@ -1,0 +1,6 @@
+# AUR 来源：clone AUR 仓库后直接 makepkg
+[package]
+name = "claude-code"
+source = "aur"
+url = "https://aur.archlinux.org/claude-code.git"
+version = "2.1.317-1"
