@@ -95,7 +95,10 @@ jobs:
           chown -R builder:builder /build/src
           su - builder -c 'cd /build/src && GOTOOLCHAIN=auto go tool mygo build -platform linux/amd64 -o /build/out'
           pkgbuild=$(find /build/out -name PKGBUILD -print -quit)
-          test -n "$pkgbuild"
+          if [ -z "$pkgbuild" ]; then
+            echo "::error::mygo build generated no PKGBUILD; use source = \"aur\" or a mygo version that packages Arch Linux"
+            exit 1
+          fi
           dir=$(dirname "$pkgbuild")
           su - builder -c "cd '$dir' && makepkg -f --noconfirm --nodeps"
           find "$dir" -maxdepth 1 -name '*.pkg.tar.zst' -exec cp -v {} /out/ \;

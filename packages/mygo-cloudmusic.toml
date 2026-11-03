@@ -1,7 +1,7 @@
-# mygo 源码构建：mygo build 会在 Linux 产物目录生成 PKGBUILD
+# AUR 来源：PKGBUILD 自行从上游源码构建
+# （上游锁定的 mygo 版本早于 v0.7.4，不会生成 PKGBUILD）
 [package]
 name = "mygo-cloudmusic"
-source = "github"
-method = "mygo"
-repo = "https://github.com/egoist/mygo-cloudmusic"
+source = "aur"
+url = "https://aur.archlinux.org/mygo-cloudmusic.git"
 version = "0.1.24-1"

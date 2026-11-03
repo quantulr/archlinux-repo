@@ -41,7 +41,7 @@ packages/
 - **github + mygo**：clone `repo`，执行 `go tool mygo build -platform linux/amd64 -o /build/out`，找到生成的 `PKGBUILD` 并执行 `makepkg`。
 - **github + prebuilt**：查询最新 release，下载名称匹配 `asset` 的 `pkg.tar.zst`，直接上传到发布。
 
-> 注意：mygo 源码构建生成的是 `kero`、`mygo-cloudmusic` 包，与 AUR 的 `kero-bin`、`mygo-cloudmusic-bin` 冲突，安装前需先移除对应的 `-bin` 包。
+> 注意：`kero` 由 mygo 源码构建生成，与 AUR 的 `kero-bin` 冲突，安装前需先移除 `kero-bin`。`mygo-cloudmusic` 直接使用 AUR 的源码包 `mygo-cloudmusic`（上游锁定的 mygo 版本不生成 PKGBUILD）。
 
 ## 自动构建与发布
 
