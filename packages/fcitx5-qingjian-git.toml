@@ -3,4 +3,6 @@
 name = "fcitx5-qingjian-git"
 source = "aur"
 url = "https://aur.archlinux.org/fcitx5-qingjian-git.git"
-version = "0.3.2.r5.g3d5fd2df-1"
+version = "0.3.2.r29.g730d8a9f-1"
+last_built = "2026-11-03T05:48:14Z"
+vcs_revision = "730d8a9fbae8f0ab1a924b2be3243e036daabe78"
