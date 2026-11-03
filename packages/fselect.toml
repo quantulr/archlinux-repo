@@ -1,0 +1,6 @@
+# AUR 来源：clone AUR 仓库后直接 makepkg
+[package]
+name = "fselect"
+source = "aur"
+url = "https://aur.archlinux.org/fselect.git"
+version = "0.10.4-2"

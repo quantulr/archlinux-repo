@@ -1,0 +1,6 @@
+# AUR 来源：clone AUR 仓库后直接 makepkg
+[package]
+name = "gallery-dl"
+source = "aur"
+url = "https://aur.archlinux.org/gallery-dl.git"
+version = "1.32.19-1"

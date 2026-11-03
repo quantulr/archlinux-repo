@@ -1,0 +1,6 @@
+# AUR 来源：clone AUR 仓库后直接 makepkg
+[package]
+name = "crush"
+source = "aur"
+url = "https://aur.archlinux.org/crush.git"
+version = "0.99.0-1"

@@ -8,8 +8,11 @@
 packages/
 ├── bili-fm.toml
 ├── claude-code.toml
+├── crush.toml
 ├── dbx-bin.toml
 ├── fcitx5-qingjian-git.toml
+├── fselect.toml
+├── gallery-dl.toml
 ├── kero.toml
 ├── umbriel-git.toml
 └── xdg-desktop-portal-umbriel-git.toml
