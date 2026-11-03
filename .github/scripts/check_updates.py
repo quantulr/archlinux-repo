@@ -24,6 +24,7 @@ from pathlib import Path
 AUR_RPC = "https://aur.archlinux.org/rpc/v5/info"
 GITHUB_API = "https://api.github.com"
 TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "")
 
 
 def warn(message):
@@ -127,14 +128,59 @@ def latest_vcs_revision(url, ref):
     return lines[0].split()[0] if lines else ""
 
 
+def release_package_names():
+    """Package names in the release's manifest.json, if there is one."""
+    if not GITHUB_REPOSITORY:
+        return set()
+    try:
+        release = gh_get(f"/repos/{GITHUB_REPOSITORY}/releases/tags/packages")
+    except urllib.error.HTTPError as err:
+        if err.code == 404:
+            return set()
+        warn(f"could not read the release: {err}")
+        return set()
+    except urllib.error.URLError as err:
+        warn(f"could not read the release: {err}")
+        return set()
+
+    assets = []
+    page = 1
+    while True:
+        batch = gh_get(
+            f"/repos/{GITHUB_REPOSITORY}/releases/{release['id']}/assets"
+            f"?per_page=100&page={page}"
+        )
+        assets.extend(batch)
+        if len(batch) < 100:
+            break
+        page += 1
+
+    manifest = next((a for a in assets if a["name"] == "manifest.json"), None)
+    if manifest is None:
+        return set()
+    req = urllib.request.Request(
+        manifest["browser_download_url"],
+        headers={"User-Agent": "archlinux-repo"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            data = json.load(resp)
+    except (urllib.error.URLError, json.JSONDecodeError) as err:
+        warn(f"could not read manifest.json: {err}")
+        return set()
+    return {p.get("name") for p in data.get("packages", []) if p.get("name")}
+
+
 def main():
     matrix = []
+    toml_names = set()
 
     for path in sorted(Path("packages").glob("*.toml")):
         with path.open("rb") as fh:
             pkg = tomllib.load(fh)["package"]
 
         name = pkg["name"]
+        toml_names.add(name)
         source = pkg["source"]
         recorded = pkg["version"]
         needed = not pkg.get("last_built")
@@ -259,9 +305,15 @@ def main():
         else:
             print(f"skip  {name}: recorded {recorded} is current")
 
+    stale = release_package_names() - toml_names
+    reconcile = bool(stale)
+    if stale:
+        print(f"reconcile: remove {', '.join(sorted(stale))} from the release")
+
     with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
         fh.write("matrix=" + json.dumps(matrix, separators=(",", ":")) + "\n")
         fh.write(f"count={len(matrix)}\n")
+        fh.write(f"reconcile={'true' if reconcile else 'false'}\n")
 
     print(f"{len(matrix)} package(s) to build")
 

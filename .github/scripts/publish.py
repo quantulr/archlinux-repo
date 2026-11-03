@@ -179,6 +179,7 @@ def bootstrap(assets, built_filenames):
 
 
 def main():
+    DIST.mkdir(parents=True, exist_ok=True)
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     toml_names = read_toml_names()
     current = read_current()

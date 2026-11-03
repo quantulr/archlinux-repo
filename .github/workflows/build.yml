@@ -27,6 +27,7 @@ jobs:
     outputs:
       matrix: ${{ steps.check.outputs.matrix }}
       count: ${{ steps.check.outputs.count }}
+      reconcile: ${{ steps.check.outputs.reconcile }}
     steps:
       - uses: actions/checkout@v4
       - name: Find packages to build
@@ -208,6 +209,7 @@ jobs:
 
   publish:
     needs: [prepare, build]
+    if: always() && needs.prepare.result == 'success' && (needs.build.result == 'success' || (needs.build.result == 'skipped' && needs.prepare.outputs.reconcile == 'true'))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -219,6 +221,7 @@ jobs:
           ref: main
           fetch-depth: 0
       - name: Download built packages
+        if: needs.build.result == 'success'
         uses: actions/download-artifact@v4
         with:
           path: dist

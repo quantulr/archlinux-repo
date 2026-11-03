@@ -12,7 +12,6 @@ packages/
 ├── dbx-bin.toml
 ├── fcitx5-qingjian-git.toml
 ├── fselect.toml
-├── gallery-dl.toml
 ├── kero.toml
 ├── umbriel-git.toml
 └── xdg-desktop-portal-umbriel-git.toml
@@ -88,6 +87,7 @@ sudo pacman -U https://github.com/quantulr/archlinux-repo/releases/download/pack
   `https://github.com/quantulr/archlinux-repo/releases/download/packages/manifest.json`
 - `SHA256SUMS`：由 manifest 生成，覆盖 release 中所有包。
 - `*.pkg.tar.zst`：每个包只保留最新版本；更新后不再被 manifest 引用的旧资产会自动删除，因此 release 不保留历史版本（版本历史仍可在 git 中查看）。带 epoch 的包文件名中的 `:` 会替换为 `_` 以兼容 GitHub Artifacts，版本仍以包内 `.PKGINFO` 为准。
+- 从 `packages/` 删除 TOML 后，下一次运行会检测到 manifest 中多出的包，即使没有新的构建也会运行 publish，自动更新 manifest/SHA256SUMS 并删除对应资产。
 
 ## 示例
 
