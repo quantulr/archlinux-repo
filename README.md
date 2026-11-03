@@ -11,6 +11,12 @@ packages/
 ├── kero.toml
 ├── mygo-cloudmusic.toml
 └── bili-fm.toml
+.github/
+├── scripts/
+│   ├── check_updates.py
+│   └── record_versions.py
+└── workflows/
+    └── build.yml
 ```
 
 ## TOML 格式
@@ -22,6 +28,7 @@ packages/
 | `name` | 是 | 包名，必须与文件名（不含 `.toml`）一致 |
 | `source` | 是 | 来源类型：`aur` 或 `github` |
 | `version` | 是 | 最近记录的版本，格式 `pkgver-pkgrel`；构建成功后由 workflow 回写 |
+| `last_built` | 可选 | 最近一次成功构建的时间（ISO 8601），由 workflow 写入；缺失时会强制构建 |
 | `url` | AUR 必填 | AUR git 地址 |
 | `repo` | GitHub 必填 | GitHub 仓库地址 |
 | `method` | GitHub 必填 | `mygo`：源码构建，`mygo build` 生成 PKGBUILD；`prebuilt`：从 release 下载现成的 `pkg.tar.zst` |
@@ -31,10 +38,32 @@ packages/
 ## 构建方式
 
 - **AUR**：`git clone <url>`，在仓库目录执行 `makepkg`。
-- **github + mygo**：clone `repo`，执行 `go tool mygo build -platform linux/amd64`，在生成的 Linux 产物目录（`mygo.json` 的 `out`，通常为 `build`）中找到 `PKGBUILD` 并执行 `makepkg`。
-- **github + prebuilt**：查询最新 release，下载名称匹配 `asset` 的 `pkg.tar.zst`，直接加入仓库。
+- **github + mygo**：clone `repo`，执行 `go tool mygo build -platform linux/amd64 -o /build/out`，找到生成的 `PKGBUILD` 并执行 `makepkg`。
+- **github + prebuilt**：查询最新 release，下载名称匹配 `asset` 的 `pkg.tar.zst`，直接上传到发布。
 
 > 注意：mygo 源码构建生成的是 `kero`、`mygo-cloudmusic` 包，与 AUR 的 `kero-bin`、`mygo-cloudmusic-bin` 冲突，安装前需先移除对应的 `-bin` 包。
+
+## 自动构建与发布
+
+workflow 在以下情况运行：
+
+- 每天 UTC 00:00 定时检查上游版本
+- 手动触发（Actions → Build packages → Run workflow）
+- `packages/**`、`.github/scripts/**` 或 workflow 文件变更时
+
+`prepare` 任务比较 TOML 中的 `version` 与上游最新版本；缺少 `last_built` 时也会强制构建。构建成功的包上传到 tag 为 `packages` 的滚动 GitHub Release：
+
+```
+https://github.com/quantulr/archlinux-repo/releases/tag/packages
+```
+
+下载并安装：
+
+```sh
+sudo pacman -U https://github.com/quantulr/archlinux-repo/releases/download/packages/<文件名>.pkg.tar.zst
+```
+
+包未签名，release 中同时提供 `SHA256SUMS`。构建成功后，workflow 会把实际构建出的版本和 `last_built` 写回对应的 TOML，并以 `[skip ci]` 提交到 `main`。
 
 ## 示例
 

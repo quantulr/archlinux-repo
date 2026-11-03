@@ -1,0 +1,178 @@
+name: Build packages
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "packages/**"
+      - ".github/scripts/**"
+      - ".github/workflows/build.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-packages
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.check.outputs.matrix }}
+      count: ${{ steps.check.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find packages to build
+        id: check
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/check_updates.py
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.count != '0'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    container:
+      image: archlinux:base-devel
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    env:
+      PKG_NAME: ${{ matrix.package.name }}
+      PKG_SOURCE: ${{ matrix.package.source }}
+      PKG_METHOD: ${{ matrix.package.method }}
+      PKG_URL: ${{ matrix.package.url }}
+      PKG_REPO: ${{ matrix.package.repo }}
+      PKG_TAG: ${{ matrix.package.tag }}
+      PKG_ASSET_NAME: ${{ matrix.package.asset_name }}
+      PKG_ASSET_URL: ${{ matrix.package.asset_url }}
+    steps:
+      - name: Install build tools
+        run: |
+          pacman-key --init
+          pacman-key --populate archlinux
+          pacman -Syu --noconfirm --needed git go curl jq libarchive
+      - name: Create build user
+        run: |
+          useradd -m builder
+          echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
+          install -d -o builder -g builder /build
+          mkdir -p /out
+      - name: Clone AUR package
+        if: matrix.package.source == 'aur'
+        run: git clone --depth 1 "$PKG_URL" /build/src
+      - name: Build AUR package
+        if: matrix.package.source == 'aur'
+        run: |
+          set -euo pipefail
+          chown -R builder:builder /build/src
+          su - builder -c 'cd /build/src && makepkg -fs --noconfirm'
+          find /build/src -maxdepth 1 -name '*.pkg.tar.zst' -exec cp -v {} /out/ \;
+      - name: Clone mygo project
+        if: matrix.package.source == 'github' && matrix.package.method == 'mygo'
+        run: |
+          set -euo pipefail
+          if [ -n "$PKG_TAG" ]; then
+            git clone --depth 1 --branch "$PKG_TAG" "$PKG_REPO" /build/src
+          else
+            git clone --depth 1 "$PKG_REPO" /build/src
+          fi
+      - name: Build mygo package
+        if: matrix.package.source == 'github' && matrix.package.method == 'mygo'
+        run: |
+          set -euo pipefail
+          install -d -o builder -g builder /build/out
+          chown -R builder:builder /build/src
+          su - builder -c 'cd /build/src && GOTOOLCHAIN=auto go tool mygo build -platform linux/amd64 -o /build/out'
+          pkgbuild=$(find /build/out -name PKGBUILD -print -quit)
+          test -n "$pkgbuild"
+          dir=$(dirname "$pkgbuild")
+          su - builder -c "cd '$dir' && makepkg -f --noconfirm --nodeps"
+          find "$dir" -maxdepth 1 -name '*.pkg.tar.zst' -exec cp -v {} /out/ \;
+      - name: Download prebuilt package
+        if: matrix.package.method == 'prebuilt'
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 --retry-delay 5 \
+            -o "/out/$PKG_ASSET_NAME" \
+            "$PKG_ASSET_URL"
+      - name: Record built version
+        run: |
+          set -euo pipefail
+          pkgfile=$(find /out -maxdepth 1 -name '*.pkg.tar.zst' -print -quit)
+          test -n "$pkgfile"
+          pkgname=$(bsdtar -xOf "$pkgfile" .PKGINFO | sed -n 's/^pkgname = //p')
+          version=$(bsdtar -xOf "$pkgfile" .PKGINFO | sed -n 's/^pkgver = //p')
+          test -n "$pkgname"
+          test -n "$version"
+          jq -n --arg name "$PKG_NAME" --arg pkgname "$pkgname" --arg version "$version" \
+            '{name: $name, pkgname: $pkgname, version: $version}' \
+            > "/out/$PKG_NAME.json"
+          cat "/out/$PKG_NAME.json"
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: pkg-${{ matrix.package.name }}
+          path: /out/*
+          if-no-files-found: error
+
+  publish:
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Download built packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          packages=(dist/*.pkg.tar.zst)
+          if [ "${#packages[@]}" -eq 0 ]; then
+            echo "No packages were built; nothing to publish."
+            exit 0
+          fi
+          gh release view packages --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create packages --repo "$GITHUB_REPOSITORY" \
+              --target main \
+              --latest \
+              --title "Arch Linux packages" \
+              --notes "Rolling release of the latest built Arch Linux packages."
+          (cd dist && sha256sum *.pkg.tar.zst > SHA256SUMS)
+          gh release upload packages "${packages[@]}" dist/SHA256SUMS \
+            --repo "$GITHUB_REPOSITORY" --clobber
+      - name: Record versions in TOML
+        run: python3 .github/scripts/record_versions.py
+      - name: Commit version updates
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packages/*.toml
+          if git diff --cached --quiet; then
+            echo "No version changes."
+            exit 0
+          fi
+          git commit -m "chore(packages): record built versions [skip ci]"
+          git pull --rebase origin main
+          git push origin HEAD:main
