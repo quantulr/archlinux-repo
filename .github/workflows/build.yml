@@ -109,17 +109,34 @@ jobs:
           curl -fL --retry 3 --retry-delay 5 \
             -o "/out/$PKG_ASSET_NAME" \
             "$PKG_ASSET_URL"
-      - name: Record built version
+      - name: Record built packages
         run: |
           set -euo pipefail
-          pkgfile=$(find /out -maxdepth 1 -name '*.pkg.tar.zst' -print -quit)
-          test -n "$pkgfile"
-          pkgname=$(bsdtar -xOf "$pkgfile" .PKGINFO | sed -n 's/^pkgname = //p')
-          version=$(bsdtar -xOf "$pkgfile" .PKGINFO | sed -n 's/^pkgver = //p')
-          test -n "$pkgname"
-          test -n "$version"
-          jq -n --arg name "$PKG_NAME" --arg pkgname "$pkgname" --arg version "$version" \
-            '{name: $name, pkgname: $pkgname, version: $version}' \
+          built_at=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          packages='[]'
+          while IFS= read -r -d '' pkgfile; do
+            info=$(bsdtar -xOf "$pkgfile" .PKGINFO)
+            pkgname=$(sed -n 's/^pkgname = //p' <<<"$info")
+            version=$(sed -n 's/^pkgver = //p' <<<"$info")
+            arch=$(sed -n 's/^arch = //p' <<<"$info")
+            test -n "$pkgname"
+            test -n "$version"
+            test -n "$arch"
+            sha256=$(sha256sum "$pkgfile" | awk '{print $1}')
+            size=$(stat -c %s "$pkgfile")
+            packages=$(jq \
+              --arg pkgname "$pkgname" \
+              --arg version "$version" \
+              --arg arch "$arch" \
+              --arg filename "$(basename "$pkgfile")" \
+              --arg sha256 "$sha256" \
+              --argjson size "$size" \
+              '. + [{pkgname: $pkgname, version: $version, arch: $arch, filename: $filename, sha256: $sha256, size: $size}]' \
+              <<<"$packages")
+          done < <(find /out -maxdepth 1 -name '*.pkg.tar.zst' -print0)
+          test "$(jq 'length' <<<"$packages")" -gt 0
+          jq -n --arg name "$PKG_NAME" --arg built_at "$built_at" --argjson packages "$packages" \
+            '{name: $name, built_at: $built_at, packages: $packages}' \
             > "/out/$PKG_NAME.json"
           cat "/out/$PKG_NAME.json"
       - name: Upload package
@@ -135,6 +152,8 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y libarchive-tools zstd
       - uses: actions/checkout@v4
         with:
           ref: main
@@ -147,23 +166,7 @@ jobs:
       - name: Publish to GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          packages=(dist/*.pkg.tar.zst)
-          if [ "${#packages[@]}" -eq 0 ]; then
-            echo "No packages were built; nothing to publish."
-            exit 0
-          fi
-          gh release view packages --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
-            gh release create packages --repo "$GITHUB_REPOSITORY" \
-              --target main \
-              --latest \
-              --title "Arch Linux packages" \
-              --notes "Rolling release of the latest built Arch Linux packages."
-          (cd dist && sha256sum *.pkg.tar.zst > SHA256SUMS)
-          gh release upload packages "${packages[@]}" dist/SHA256SUMS \
-            --repo "$GITHUB_REPOSITORY" --clobber
+        run: python3 .github/scripts/publish.py
       - name: Record versions in TOML
         run: python3 .github/scripts/record_versions.py
       - name: Commit version updates

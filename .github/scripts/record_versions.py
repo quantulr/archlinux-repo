@@ -13,15 +13,24 @@ from pathlib import Path
 now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 for meta in sorted(Path("dist").glob("*.json")):
+    if meta.name == "manifest.json":
+        continue
     info = json.loads(meta.read_text())
+    packages = info.get("packages") or []
+    if not packages:
+        continue
+
     path = Path("packages") / f"{info['name']}.toml"
     if not path.exists():
         raise SystemExit(f"{meta}: no TOML for package {info['name']!r}")
 
+    version = packages[0]["version"]
+    built_at = info.get("built_at") or now
+
     text = path.read_text()
     text, count = re.subn(
         r'(?m)^version = ".*"$',
-        f"version = {json.dumps(info['version'])}",
+        f"version = {json.dumps(version)}",
         text,
         count=1,
     )
@@ -31,12 +40,12 @@ for meta in sorted(Path("dist").glob("*.json")):
     if re.search(r"(?m)^last_built = ", text):
         text = re.sub(
             r'(?m)^last_built = ".*"$',
-            f"last_built = {json.dumps(now)}",
+            f"last_built = {json.dumps(built_at)}",
             text,
             count=1,
         )
     else:
-        text = text.rstrip() + f"\nlast_built = {json.dumps(now)}\n"
+        text = text.rstrip() + f"\nlast_built = {json.dumps(built_at)}\n"
 
     path.write_text(text)
-    print(f"{path}: version {info['version']}, last_built {now}")
+    print(f"{path}: version {version}, last_built {built_at}")

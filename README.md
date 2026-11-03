@@ -13,6 +13,7 @@ packages/
 .github/
 ├── scripts/
 │   ├── check_updates.py
+│   ├── publish.py
 │   └── record_versions.py
 └── workflows/
     └── build.yml
@@ -62,7 +63,14 @@ https://github.com/quantulr/archlinux-repo/releases/tag/packages
 sudo pacman -U https://github.com/quantulr/archlinux-repo/releases/download/packages/<文件名>.pkg.tar.zst
 ```
 
-包未签名，release 中同时提供 `SHA256SUMS`。构建成功后，workflow 会把实际构建出的版本和 `last_built` 写回对应的 TOML，并以 `[skip ci]` 提交到 `main`。
+包未签名。构建成功后，workflow 会把实际构建出的版本和 `last_built` 写回对应的 TOML，并以 `[skip ci]` 提交到 `main`。
+
+### Release 资产
+
+- `manifest.json`：release 的完整快照，列出每个包的 `name`、`pkgname`、`version`、`arch`、`filename`、`sha256`、`size`、`built_at`、`asset_id`、`asset_updated_at`、`url`。本地同步程序应以它为准：
+  `https://github.com/quantulr/archlinux-repo/releases/download/packages/manifest.json`
+- `SHA256SUMS`：由 manifest 生成，覆盖 release 中所有包。
+- `*.pkg.tar.zst`：每个包只保留最新版本；更新后不再被 manifest 引用的旧资产会自动删除，因此 release 不保留历史版本（版本历史仍可在 git 中查看）。
 
 ## 示例
 
