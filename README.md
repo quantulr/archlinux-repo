@@ -45,7 +45,7 @@ packages/
 
 ## 构建方式
 
-- **AUR**：`git clone <url>`，安装 `depends`/`makedepends` 中属于官方仓库的包后执行 `makepkg`；AUR 内部依赖在构建时跳过，运行时由本仓库提供。
+- **AUR**：`git clone <url>`，安装 `depends`/`makedepends`/`checkdepends` 中属于官方仓库的包后执行 `makepkg`；AUR 内部依赖在构建时跳过，运行时由本仓库提供。
 - **github + mygo**：clone `repo`，执行 `go tool mygo build -platform linux/amd64 -o /build/out`，找到生成的 `PKGBUILD` 并执行 `makepkg`。项目锁定的 mygo 必须 ≥ v0.7.4 才能生成 PKGBUILD。
 - **github + prebuilt**：查询最新 release，下载名称匹配 `asset` 的 `pkg.tar.zst`，直接上传到发布。
 
@@ -61,6 +61,10 @@ AUR RPC 返回的 `version` 来自 `.SRCINFO`，不会随上游新 commit 变化
 
 首次构建或缺少 `vcs_revision` 时会强制构建，成功后写回 `version` 和 `vcs_revision`。
 
+### GitHub 包的版本判断
+
+GitHub 包用最新 release tag（去掉 `tag_prefix`）判断更新。若 tag 与构建出的 pkgver 不一致，直接比较 tag 与 pkgver 会导致每次检查都重建。例如 MyGit 的 tag `v0.3.27` 对应 `mygo.json` 的 `0.3.27-dev`，构建出的 pkgver 是 `0.3.27dev`。workflow 会在构建时把 tag 写入 TOML 的 `upstream_version`，之后用它与最新 tag 比较；缺失时才回退到 `version` 的 pkgver。
+
 ## 自动构建与发布
 
 workflow 在以下情况运行：
@@ -69,7 +73,7 @@ workflow 在以下情况运行：
 - 手动触发（Actions → Build packages → Run workflow）
 - `packages/**`、`.github/scripts/**` 或 workflow 文件变更时
 
-`prepare` 任务比较 TOML 中的 `version` 与上游最新版本；缺少 `last_built` 时也会强制构建。构建成功的包上传到 tag 为 `packages` 的滚动 GitHub Release：
+`prepare` 按来源比较：AUR 非 `-git` 比较 `version`，`-git` 比较 `vcs_revision`，GitHub 包优先比较 `upstream_version`；缺少 `last_built` 时也会强制构建。构建成功的包上传到 tag 为 `packages` 的滚动 GitHub Release：
 
 ```
 https://github.com/quantulr/archlinux-repo/releases/tag/packages
@@ -81,11 +85,11 @@ https://github.com/quantulr/archlinux-repo/releases/tag/packages
 sudo pacman -U https://github.com/quantulr/archlinux-repo/releases/download/packages/<文件名>.pkg.tar.zst
 ```
 
-包未签名。构建成功后，workflow 会把实际构建出的版本和 `last_built` 写回对应的 TOML，并以 `[skip ci]` 提交到 `main`。
+当前产物均为 x86_64。包未签名。构建成功后，workflow 会把实际构建出的版本和状态字段（`last_built`、`vcs_revision`、`upstream_version`）写回对应的 TOML，并以 `[skip ci]` 提交到 `main`。
 
 ### Release 资产
 
-- `manifest.json`：release 的完整快照，列出每个包的 `name`、`pkgname`、`version`、`arch`、`filename`、`sha256`、`size`、`built_at`、`asset_id`、`asset_updated_at`、`url`。本地同步程序应以它为准：
+- `manifest.json`：release 的完整快照，列出每个包的 `name`、`pkgname`、`version`、`arch`、`filename`、`sha256`、`size`、`built_at`、`asset_id`、`asset_updated_at`、`url`；`-git` 包还有 `vcs_revision`，GitHub 包还有 `upstream_version`。本地同步程序应以它为准：
   `https://github.com/quantulr/archlinux-repo/releases/download/packages/manifest.json`
 - `SHA256SUMS`：由 manifest 生成，覆盖 release 中所有包。
 - `*.pkg.tar.zst`：每个包只保留最新版本；更新后不再被 manifest 引用的旧资产会自动删除，因此 release 不保留历史版本（版本历史仍可在 git 中查看）。带 epoch 的包文件名中的 `:` 会替换为 `_` 以兼容 GitHub Artifacts，版本仍以包内 `.PKGINFO` 为准。
@@ -100,7 +104,7 @@ AUR：
 name = "claude-code"
 source = "aur"
 url = "https://aur.archlinux.org/claude-code.git"
-version = "2.1.317-1"
+version = "2.1.318-1"
 ```
 
 GitHub mygo 源码构建：
@@ -111,7 +115,7 @@ name = "kero"
 source = "github"
 method = "mygo"
 repo = "https://github.com/egoist/kero"
-version = "2.1.31-1"
+version = "2.1.33-1"
 ```
 
 GitHub release 直取：
