@@ -59,6 +59,20 @@ for meta in sorted(Path("dist").glob("*.json")):
         else:
             text = text.rstrip() + f"\nvcs_revision = {json.dumps(vcs_revision)}\n"
 
+    upstream_version = info.get("upstream_version")
+    if upstream_version:
+        if re.search(r"(?m)^upstream_version = ", text):
+            text = re.sub(
+                r'(?m)^upstream_version = ".*"$',
+                f"upstream_version = {json.dumps(upstream_version)}",
+                text,
+                count=1,
+            )
+        else:
+            text = text.rstrip() + f"\nupstream_version = {json.dumps(upstream_version)}\n"
+
     path.write_text(text)
     suffix = f", vcs_revision {vcs_revision}" if vcs_revision else ""
+    if upstream_version:
+        suffix += f", upstream_version {upstream_version}"
     print(f"{path}: version {version}, last_built {built_at}{suffix}")

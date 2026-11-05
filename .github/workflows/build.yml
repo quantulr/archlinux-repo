@@ -57,6 +57,7 @@ jobs:
       PKG_TAG: ${{ matrix.package.tag }}
       PKG_ASSET_NAME: ${{ matrix.package.asset_name }}
       PKG_ASSET_URL: ${{ matrix.package.asset_url }}
+      PKG_UPSTREAM: ${{ matrix.package.upstream }}
     steps:
       - name: Install build tools
         run: |
@@ -189,16 +190,21 @@ jobs:
               vcs_revision=$(su - builder -c "git -C '$(dirname "$gitdir")' rev-parse HEAD" 2>/dev/null || true)
             fi
           fi
-          if [ -n "$vcs_revision" ]; then
-            jq -n --arg name "$PKG_NAME" --arg built_at "$built_at" \
-              --arg vcs_revision "$vcs_revision" --argjson packages "$packages" \
-              '{name: $name, built_at: $built_at, vcs_revision: $vcs_revision, packages: $packages}' \
-              > "/out/$PKG_NAME.json"
-          else
-            jq -n --arg name "$PKG_NAME" --arg built_at "$built_at" --argjson packages "$packages" \
-              '{name: $name, built_at: $built_at, packages: $packages}' \
-              > "/out/$PKG_NAME.json"
+          upstream_version=""
+          if [ "$PKG_SOURCE" = "github" ]; then
+            upstream_version="$PKG_UPSTREAM"
           fi
+          extra='{}'
+          if [ -n "$vcs_revision" ]; then
+            extra=$(jq --arg value "$vcs_revision" '. + {vcs_revision: $value}' <<<"$extra")
+          fi
+          if [ -n "$upstream_version" ]; then
+            extra=$(jq --arg value "$upstream_version" '. + {upstream_version: $value}' <<<"$extra")
+          fi
+          jq -n --arg name "$PKG_NAME" --arg built_at "$built_at" \
+            --argjson packages "$packages" --argjson extra "$extra" \
+            '{name: $name, built_at: $built_at, packages: $packages} + $extra' \
+            > "/out/$PKG_NAME.json"
           cat "/out/$PKG_NAME.json"
       - name: Upload package
         uses: actions/upload-artifact@v4

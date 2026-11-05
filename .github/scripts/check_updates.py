@@ -275,7 +275,14 @@ def main():
 
             upstream = strip_prefix(entry["tag"], prefix)
             entry["upstream"] = upstream
-            if upstream != repo_version(recorded):
+            # A mygo app's built pkgver can differ from its release tag
+            # (for example 0.3.27-dev becomes 0.3.27dev). Prefer the tag
+            # recorded at the last build, falling back to the pkgver.
+            recorded_upstream = pkg.get("upstream_version", "")
+            if recorded_upstream:
+                if upstream != recorded_upstream:
+                    needed = True
+            elif upstream != repo_version(recorded):
                 needed = True
 
             if method == "prebuilt":

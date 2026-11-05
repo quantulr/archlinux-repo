@@ -100,6 +100,8 @@ def read_current():
             entry["built_at"] = meta.get("built_at", "")
             if meta.get("vcs_revision"):
                 entry["vcs_revision"] = meta["vcs_revision"]
+            if meta.get("upstream_version"):
+                entry["upstream_version"] = meta["upstream_version"]
             current[entry["pkgname"]] = entry
     return current
 
