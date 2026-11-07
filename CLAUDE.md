@@ -63,7 +63,7 @@ go tool mygo build -platform linux/amd64 -o /tmp/out
 # 在 /tmp/out/linux-amd64/ 找到生成的 PKGBUILD，再执行 makepkg -f --noconfirm --nodeps
 ```
 
-项目锁定的 mygo 必须 ≥ v0.7.4 才会生成 PKGBUILD；否则 workflow 会报 `mygo build generated no PKGBUILD`。
+项目锁定的 mygo 必须 ≥ v0.7.4 才会生成 PKGBUILD；否则 workflow 会报 `mygo build generated no PKGBUILD`。若项目使用 `mygo.config.ts` 而不是 `mygo.json`，mygo 需要 Bun 或 Node.js ≥ 22.6 求值配置；CI 会在构建 mygo 包前安装 `bun`。
 
 ### 检查 Release
 
@@ -100,7 +100,7 @@ packages/*.toml
 
 - 仅 `count != 0` 时运行；`archlinux:base-devel` 容器，`fail-fast: false`。
 - AUR：从 `.SRCINFO` 解析 `depends`/`makedepends`/`checkdepends`，只安装官方仓库中存在的（`cargo`/`rustc` 映射为 `rust`）；AUR-only 依赖跳过（因此用 `--nodeps`）。从 PKGBUILD 的 `validpgpkeys` 导入 GPG key 到 builder keyring，导入失败才加 `--skippgpcheck`。以 builder 用户执行 `makepkg -f --noconfirm --nodeps --nocheck`。
-- mygo：clone prepare 给出的 tag → `go tool mygo build -platform linux/amd64 -o /build/out` → 必须找到生成的 PKGBUILD → `makepkg`。
+- mygo：clone prepare 给出的 tag → `go tool mygo build -platform linux/amd64 -o /build/out` → 必须找到生成的 PKGBUILD → `makepkg`。使用 `mygo.config.ts` 的项目会先安装 `bun` 来求值配置。
 - prebuilt：直接 `curl` prepare 给出的 `asset_url`，不构建。
 - 排除 `*-debug-*.pkg.tar.zst`；文件名中的 `:` 替换为 `_`（GitHub Artifacts 不允许冒号）。
 - 每个包输出 `<name>.json` 元数据（`name`、`built_at`、可选 `vcs_revision`、GitHub 包的 `upstream_version`，以及 `packages` 数组中的 `pkgname`/`version`/`arch`/`filename`/`sha256`/`size`），上传 artifact `pkg-<name>`。`upstream_version` 来自 matrix 的 `upstream`（去掉 `tag_prefix` 的 release tag）。

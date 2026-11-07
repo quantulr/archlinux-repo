@@ -124,6 +124,9 @@ jobs:
           else
             git clone --depth 1 "$PKG_REPO" /build/src
           fi
+      - name: Install Bun for mygo.config.ts
+        if: matrix.package.source == 'github' && matrix.package.method == 'mygo'
+        run: pacman -S --noconfirm --needed bun
       - name: Build mygo package
         if: matrix.package.source == 'github' && matrix.package.method == 'mygo'
         run: |

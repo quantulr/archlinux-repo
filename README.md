@@ -14,6 +14,7 @@ packages/
 ├── fselect.toml
 ├── kero.toml
 ├── mygit.toml
+├── mygo-music.toml
 ├── umbriel-git.toml
 └── xdg-desktop-portal-umbriel-git.toml
 .github/
@@ -46,7 +47,7 @@ packages/
 ## 构建方式
 
 - **AUR**：`git clone <url>`，安装 `depends`/`makedepends`/`checkdepends` 中属于官方仓库的包后执行 `makepkg`；AUR 内部依赖在构建时跳过，运行时由本仓库提供。
-- **github + mygo**：clone `repo`，执行 `go tool mygo build -platform linux/amd64 -o /build/out`，找到生成的 `PKGBUILD` 并执行 `makepkg`。项目锁定的 mygo 必须 ≥ v0.7.4 才能生成 PKGBUILD。
+- **github + mygo**：clone `repo`，执行 `go tool mygo build -platform linux/amd64 -o /build/out`，找到生成的 `PKGBUILD` 并执行 `makepkg`。项目锁定的 mygo 必须 ≥ v0.7.4 才能生成 PKGBUILD。若项目使用 `mygo.config.ts`（而非 `mygo.json`），mygo 需要 Bun 或 Node.js ≥ 22.6 来求值，workflow 会为此安装 `bun`。
 - **github + prebuilt**：查询最新 release，下载名称匹配 `asset` 的 `pkg.tar.zst`，直接上传到发布。
 
 > 注意：`kero` 由 mygo 源码构建生成，与 AUR 的 `kero-bin` 冲突，安装前需先移除 `kero-bin`。

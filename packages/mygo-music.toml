@@ -1,0 +1,7 @@
+# mygo 源码构建：mygo build 会在 Linux 产物目录生成 PKGBUILD
+[package]
+name = "mygo-music"
+source = "github"
+method = "mygo"
+repo = "https://github.com/egoist/mygo-music"
+version = "0.1.21-1"
