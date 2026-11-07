@@ -29,7 +29,7 @@ jobs:
       count: ${{ steps.check.outputs.count }}
       reconcile: ${{ steps.check.outputs.reconcile }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Find packages to build
         id: check
         env:
@@ -210,7 +210,7 @@ jobs:
             > "/out/$PKG_NAME.json"
           cat "/out/$PKG_NAME.json"
       - name: Upload package
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pkg-${{ matrix.package.name }}
           path: /out/*
@@ -225,13 +225,13 @@ jobs:
     steps:
       - name: Install tools
         run: sudo apt-get update && sudo apt-get install -y libarchive-tools zstd
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: main
           fetch-depth: 0
       - name: Download built packages
         if: needs.build.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
