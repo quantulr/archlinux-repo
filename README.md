@@ -13,6 +13,7 @@ packages/
 ├── fcitx5-qingjian-git.toml
 ├── fselect.toml
 ├── kero.toml
+├── luciole-git.toml
 ├── mygit.toml
 ├── mygo-music.toml
 ├── umbriel-git.toml
