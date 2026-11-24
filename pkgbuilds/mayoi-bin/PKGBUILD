@@ -1,0 +1,22 @@
+# Maintainer: quantulr
+pkgname=mayoi-bin
+pkgver=0.23.3
+pkgrel=1
+pkgdesc='A small, fast code editor written in Go, with a native GPU-drawn UI (no webview, no Electron)'
+arch=('x86_64' 'aarch64')
+url='https://github.com/sorrycc/Mayoi'
+license=('MIT')
+depends=('gtk3' 'webkit2gtk-4.1' 'libsecret')
+optdepends=('gtk-layer-shell')
+source_x86_64=("https://github.com/sorrycc/Mayoi/releases/download/v${pkgver}/mayoi_${pkgver}_amd64.deb")
+source_aarch64=("https://github.com/sorrycc/Mayoi/releases/download/v${pkgver}/mayoi_${pkgver}_arm64.deb")
+sha256sums_x86_64=('e07cd18c8f386740b9985ceaccb14410f3cd1c6ea9593fd9ac774c8f19756d62')
+sha256sums_aarch64=('6400382015875e16b75385391bf72c9730fd13b954128c91b9cb7a6f1fa5cf4e')
+
+package() {
+  cd "$srcdir"
+  local _deb_arch=amd64
+  [[ $CARCH == aarch64 ]] && _deb_arch=arm64
+  bsdtar -xf "mayoi_${pkgver}_${_deb_arch}.deb"
+  bsdtar -xf data.tar.gz -C "$pkgdir"
+}

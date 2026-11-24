@@ -1,0 +1,5 @@
+# 自建 PKGBUILD：从上游 GitHub release 下载 .deb 并解包为 Arch 包
+[package]
+name = "mayoi-bin"
+source = "pkgbuild"
+version = "0.23.3-1"

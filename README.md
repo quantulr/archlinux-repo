@@ -16,6 +16,7 @@ packages/
 ├── immich-mygo-git.toml
 ├── kero.toml
 ├── luciole-git.toml
+├── mayoi-bin.toml
 ├── mygit.toml
 ├── mygo-music.toml
 ├── umbriel-git.toml
@@ -23,7 +24,9 @@ packages/
 pkgbuilds/
 ├── ely-office-bin/
 │   └── PKGBUILD
-└── immich-mygo-git/
+├── immich-mygo-git/
+│   └── PKGBUILD
+└── mayoi-bin/
     └── PKGBUILD
 .github/
 ├── scripts/
