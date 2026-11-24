@@ -1,0 +1,33 @@
+# Maintainer: quantulr
+pkgname=ely-office-bin
+pkgver=0.1.17
+pkgrel=1
+pkgdesc='Ely Office: all-in-one office suite with documents, spreadsheets, presentations, PDF, mail, notes and a Git client'
+arch=('x86_64')
+url='https://github.com/ELY-Open-Source/ElyOffice'
+license=('MIT')
+depends=(
+  'dbus'
+  'expat'
+  'gcc-libs'
+  'krb5'
+  'libxcb'
+  'vulkan-icd-loader'
+  'wayland'
+  'zlib'
+)
+provides=('ely-doc' 'ely-mail' 'ely-mark' 'ely-pdf' 'ely-show' 'ely-table' 'ely-tree')
+conflicts=('ely-doc' 'ely-mail' 'ely-mark' 'ely-pdf' 'ely-show' 'ely-table' 'ely-tree')
+options=('!strip' '!debug')
+source=("ely-office_${pkgver}-1_amd64.deb::${url}/releases/download/v${pkgver}/ely-office_${pkgver}-1_amd64.deb")
+sha256sums=('ecf6820dffa70eb71107a36d1306c88d531cf30ad59b8e0924a30ad323ca753c')
+
+package() {
+  # 上游 .deb 已按 /opt/ely-office 与 /usr 的布局构建，直接解包安装
+  bsdtar -xf "${srcdir}/ely-office_${pkgver}-1_amd64.deb" -C "${srcdir}" data.tar.xz
+  bsdtar -xf "${srcdir}/data.tar.xz" -C "${pkgdir}"
+
+  # MIT 许可证不在 Arch 通用许可证目录中，需随包安装
+  install -Dm644 "${pkgdir}/opt/ely-office/ely-doc/bin/licenses/LICENSE" \
+    "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}

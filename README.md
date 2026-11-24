@@ -10,6 +10,7 @@ packages/
 ├── claude-code.toml
 ├── crush.toml
 ├── dbx-bin.toml
+├── ely-office-bin.toml
 ├── fcitx5-qingjian-git.toml
 ├── fselect.toml
 ├── immich-mygo-git.toml
@@ -20,6 +21,8 @@ packages/
 ├── umbriel-git.toml
 └── xdg-desktop-portal-umbriel-git.toml
 pkgbuilds/
+├── ely-office-bin/
+│   └── PKGBUILD
 └── immich-mygo-git/
     └── PKGBUILD
 .github/
