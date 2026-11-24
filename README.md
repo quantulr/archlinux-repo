@@ -1,6 +1,6 @@
 # archlinux-repo
 
-通过 GitHub Actions 自动构建并发布 Arch Linux 软件包的仓库。每个包的来源和最近记录的版本保存在 `packages/<name>.toml` 中。
+通过 GitHub Actions 自动构建并发布 Arch Linux 软件包的仓库。每个包的来源和最近记录的版本保存在 `packages/<name>.toml` 中；自建 PKGBUILD 放在 `pkgbuilds/<name>/`。
 
 ## 目录结构
 
@@ -12,12 +12,16 @@ packages/
 ├── dbx-bin.toml
 ├── fcitx5-qingjian-git.toml
 ├── fselect.toml
+├── immich-mygo-git.toml
 ├── kero.toml
 ├── luciole-git.toml
 ├── mygit.toml
 ├── mygo-music.toml
 ├── umbriel-git.toml
 └── xdg-desktop-portal-umbriel-git.toml
+pkgbuilds/
+└── immich-mygo-git/
+    └── PKGBUILD
 .github/
 ├── scripts/
 │   ├── check_updates.py
@@ -34,10 +38,10 @@ packages/
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
 | `name` | 是 | 包名，必须与文件名（不含 `.toml`）一致 |
-| `source` | 是 | 来源类型：`aur` 或 `github` |
+| `source` | 是 | 来源类型：`aur`、`github` 或 `pkgbuild` |
 | `version` | 是 | 最近记录的版本，格式 `pkgver-pkgrel`；构建成功后由 workflow 回写 |
 | `last_built` | 可选 | 最近一次成功构建的时间（ISO 8601），由 workflow 写入；缺失时会强制构建 |
-| `vcs_revision` | 可选 | `-git` AUR 包最近构建的上游 commit；由 workflow 写入 |
+| `vcs_revision` | 可选 | `-git` 包（AUR 或自建 PKGBUILD）最近构建的上游 commit；由 workflow 写入 |
 | `upstream_version` | 可选 | GitHub 包最近构建对应的上游 release tag（去掉 `tag_prefix`）；由 workflow 写入 |
 | `url` | AUR 必填 | AUR git 地址 |
 | `repo` | GitHub 必填 | GitHub 仓库地址 |
@@ -48,6 +52,7 @@ packages/
 ## 构建方式
 
 - **AUR**：`git clone <url>`，安装 `depends`/`makedepends`/`checkdepends` 中属于官方仓库的包后执行 `makepkg`；AUR 内部依赖在构建时跳过，运行时由本仓库提供。
+- **pkgbuild**：使用本仓库 `pkgbuilds/<name>/` 中维护的 PKGBUILD，复制到构建目录并生成 `.SRCINFO`，其余依赖安装和 `makepkg` 流程与 AUR 相同。
 - **github + mygo**：clone `repo`，执行 `go tool mygo build -platform linux/amd64 -o /build/out`，找到生成的 `PKGBUILD` 并执行 `makepkg`。项目锁定的 mygo 必须 ≥ v0.7.4 才能生成 PKGBUILD。若项目使用 `mygo.config.ts`（而非 `mygo.json`），mygo 需要 Bun 或 Node.js ≥ 22.6 来求值，workflow 会为此安装 `bun`。
 - **github + prebuilt**：查询最新 release，下载名称匹配 `asset` 的 `pkg.tar.zst`，直接上传到发布。
 
@@ -63,6 +68,15 @@ AUR RPC 返回的 `version` 来自 `.SRCINFO`，不会随上游新 commit 变化
 
 首次构建或缺少 `vcs_revision` 时会强制构建，成功后写回 `version` 和 `vcs_revision`。
 
+### 自建 PKGBUILD
+
+`source = "pkgbuild"` 的包由本仓库维护 PKGBUILD，放在 `pkgbuilds/<name>/`（可附带 patch 等辅助文件）。TOML 的 `name` 必须等于 PKGBUILD 的 `pkgname`（单包）或 `pkgbase`。`prepare` 直接读取 PKGBUILD 判断更新：
+
+- 有 `git+` 源时，按该分支或 tag 的最新 commit 与 `vcs_revision` 比较，与 `-git` AUR 包相同；
+- 没有 `git+` 源时，比较 PKGBUILD 的 `pkgver`/`pkgrel` 与 TOML 的 `version`。
+
+VCS 包建议以 `-git` 结尾，并在 `pkgver()` 中生成带 commit 的单调版本（如 `0.1.0.r120.g7920763`）。
+
 ### GitHub 包的版本判断
 
 GitHub 包用最新 release tag（去掉 `tag_prefix`）判断更新。若 tag 与构建出的 pkgver 不一致，直接比较 tag 与 pkgver 会导致每次检查都重建。例如 MyGit 的 tag `v0.3.27` 对应 `mygo.json` 的 `0.3.27-dev`，构建出的 pkgver 是 `0.3.27dev`。workflow 会在构建时把 tag 写入 TOML 的 `upstream_version`，之后用它与最新 tag 比较；缺失时才回退到 `version` 的 pkgver。
@@ -73,9 +87,9 @@ workflow 在以下情况运行：
 
 - 每小时（UTC 整点）定时检查上游版本
 - 手动触发（Actions → Build packages → Run workflow）
-- `packages/**`、`.github/scripts/**` 或 workflow 文件变更时
+- `packages/**`、`pkgbuilds/**`、`.github/scripts/**` 或 workflow 文件变更时
 
-`prepare` 按来源比较：AUR 非 `-git` 比较 `version`，`-git` 比较 `vcs_revision`，GitHub 包优先比较 `upstream_version`；缺少 `last_built` 时也会强制构建。构建成功的包上传到 tag 为 `packages` 的滚动 GitHub Release：
+`prepare` 按来源比较：AUR 非 `-git` 比较 `version`，`-git` 比较 `vcs_revision`，GitHub 包优先比较 `upstream_version`，`pkgbuild` 有 `git+` 源时比较 `vcs_revision`、否则比较 PKGBUILD 的版本；缺少 `last_built` 时也会强制构建。构建成功的包上传到 tag 为 `packages` 的滚动 GitHub Release：
 
 ```
 https://github.com/quantulr/archlinux-repo/releases/tag/packages
@@ -91,7 +105,7 @@ sudo pacman -U https://github.com/quantulr/archlinux-repo/releases/download/pack
 
 ### Release 资产
 
-- `manifest.json`：release 的完整快照，列出每个包的 `name`、`pkgname`、`version`、`arch`、`filename`、`sha256`、`size`、`built_at`、`asset_id`、`asset_updated_at`、`url`；`-git` 包还有 `vcs_revision`，GitHub 包还有 `upstream_version`。本地同步程序应以它为准：
+- `manifest.json`：release 的完整快照，列出每个包的 `name`、`pkgname`、`version`、`arch`、`filename`、`sha256`、`size`、`built_at`、`asset_id`、`asset_updated_at`、`url`；VCS 包（名称以 `-git` 结尾）还有 `vcs_revision`，GitHub 包还有 `upstream_version`。本地同步程序应以它为准：
   `https://github.com/quantulr/archlinux-repo/releases/download/packages/manifest.json`
 - `SHA256SUMS`：由 manifest 生成，覆盖 release 中所有包。
 - `*.pkg.tar.zst`：每个包只保留最新版本；更新后不再被 manifest 引用的旧资产会自动删除，因此 release 不保留历史版本（版本历史仍可在 git 中查看）。带 epoch 的包文件名中的 `:` 会替换为 `_` 以兼容 GitHub Artifacts，版本仍以包内 `.PKGINFO` 为准。
@@ -132,3 +146,14 @@ asset = "*-linux-x86_64.pkg.tar.zst"
 tag_prefix = "mygo-v"
 version = "3.1.16-1"
 ```
+
+自建 PKGBUILD（VCS）：
+
+```toml
+[package]
+name = "immich-mygo-git"
+source = "pkgbuild"
+version = "0.1.0-1"
+```
+
+对应 `pkgbuilds/immich-mygo-git/PKGBUILD`，其中 `source` 指向上游 git 分支；首次构建后 workflow 会把实际 pkgver 和 `vcs_revision` 写回 TOML。

@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-这是一个 GitHub Actions 驱动的 Arch Linux 二进制包仓库。`packages/<name>.toml` 是每个包的唯一配置与状态文件；workflow 检查上游版本、在 Arch 容器中构建、把 `.pkg.tar.zst` 上传到滚动 GitHub Release（tag `packages`），并把实际构建结果写回 TOML。
+这是一个 GitHub Actions 驱动的 Arch Linux 二进制包仓库。`packages/<name>.toml` 是每个包的唯一配置与状态文件；自建 PKGBUILD 放在 `pkgbuilds/<name>/`。workflow 检查上游版本、在 Arch 容器中构建、把 `.pkg.tar.zst` 上传到滚动 GitHub Release（tag `packages`），并把实际构建结果写回 TOML。
 
-手动构建/发布不是常规工作流；改动通常落在 `packages/*.toml`、`.github/workflows/build.yml` 或 `.github/scripts/*.py`。字段定义见 `README.md`。
+手动构建/发布不是常规工作流；改动通常落在 `packages/*.toml`、`pkgbuilds/*/PKGBUILD`、`.github/workflows/build.yml` 或 `.github/scripts/*.py`。字段定义见 `README.md`。
 
 ## 常用命令
 
@@ -65,6 +65,13 @@ go tool mygo build -platform linux/amd64 -o /tmp/out
 
 项目锁定的 mygo 必须 ≥ v0.7.4 才会生成 PKGBUILD；否则 workflow 会报 `mygo build generated no PKGBUILD`。若项目使用 `mygo.config.ts` 而不是 `mygo.json`，mygo 需要 Bun 或 Node.js ≥ 22.6 求值配置；CI 会在构建 mygo 包前安装 `bun`。
 
+自建 PKGBUILD：
+
+```sh
+cd pkgbuilds/<name>
+makepkg -f --noconfirm --nodeps --nocheck
+```
+
 ### 检查 Release
 
 ```sh
@@ -78,7 +85,7 @@ gh release download packages --repo quantulr/archlinux-repo -p manifest.json -D 
 ### 数据流
 
 ```
-packages/*.toml
+packages/*.toml（pkgbuild 来源另含 pkgbuilds/<name>/PKGBUILD）
   → prepare（check_updates.py）→ matrix / count / reconcile
   → build（Arch 容器，矩阵并行）→ artifacts
   → publish（publish.py）→ Release `packages`
@@ -87,10 +94,11 @@ packages/*.toml
 
 ### prepare（`.github/scripts/check_updates.py`）
 
-- 触发：每小时 UTC 整点的 `schedule`、`workflow_dispatch`、以及 main 上 `packages/**`、`.github/scripts/**`、workflow 文件的 push。
+- 触发：每小时 UTC 整点的 `schedule`、`workflow_dispatch`、以及 main 上 `packages/**`、`pkgbuilds/**`、`.github/scripts/**`、workflow 文件的 push。
 - 仅当 `github.ref == refs/heads/main` 时运行。
 - AUR 非 `-git`：AUR RPC 的 `Version` 与 TOML `version` 比较。
 - AUR `-git`：AUR RPC 版本不跟随上游 commit，因此 clone AUR 仓库、解析 `.SRCINFO` 第一个 `git+` 源、`git ls-remote` 取最新 commit，与 TOML 的 `vcs_revision` 比较。VCS 源解析失败且已有 `last_built` 时跳过本轮，避免每小时误重建。
+- `pkgbuild`：读取 `pkgbuilds/<name>/PKGBUILD`（静态解析，不执行）。TOML `name` 必须等于 `pkgname` 或 `pkgbase`。有 `git+` 源时按第一个源的 branch/tag 取最新 commit，与 `vcs_revision` 比较；否则比较 PKGBUILD 的 `pkgver`/`pkgrel` 与 TOML `version`。查询失败时跳过本轮。
 - GitHub `mygo` / `prebuilt`：查询最新 release，tag 去掉 `tag_prefix`（默认 `v`）；优先与 TOML 的 `upstream_version` 比较，缺失时回退到 `version` 的 pkgver。`prebuilt` 还需匹配 `asset` glob，并输出资产的下载 URL。
   - 例：MyGit 的 tag `v0.3.27` 对应 `mygo.json` 版本 `0.3.27-dev`，构建出的 pkgver 是 `0.3.27dev`；直接比较 tag 与 pkgver 会每小时误重建，因此必须使用 `upstream_version`。
 - `last_built` 缺失 ⇒ 强制构建。
@@ -100,11 +108,12 @@ packages/*.toml
 
 - 仅 `count != 0` 时运行；`archlinux:base-devel` 容器，`fail-fast: false`。
 - AUR：从 `.SRCINFO` 解析 `depends`/`makedepends`/`checkdepends`，只安装官方仓库中存在的（`cargo`/`rustc` 映射为 `rust`）；AUR-only 依赖跳过（因此用 `--nodeps`）。从 PKGBUILD 的 `validpgpkeys` 导入 GPG key 到 builder keyring，导入失败才加 `--skippgpcheck`。以 builder 用户执行 `makepkg -f --noconfirm --nodeps --nocheck`。
+- pkgbuild：把 `pkgbuilds/<name>/` 复制到 `/build/src`，用 `makepkg --printsrcinfo` 生成 `.SRCINFO`（缺失时），之后复用 AUR 的依赖安装、GPG 导入和 `makepkg` 流程。
 - mygo：clone prepare 给出的 tag → `go tool mygo build -platform linux/amd64 -o /build/out` → 必须找到生成的 PKGBUILD → `makepkg`。使用 `mygo.config.ts` 的项目会先安装 `bun` 来求值配置。
 - prebuilt：直接 `curl` prepare 给出的 `asset_url`，不构建。
 - 排除 `*-debug-*.pkg.tar.zst`；文件名中的 `:` 替换为 `_`（GitHub Artifacts 不允许冒号）。
 - 每个包输出 `<name>.json` 元数据（`name`、`built_at`、可选 `vcs_revision`、GitHub 包的 `upstream_version`，以及 `packages` 数组中的 `pkgname`/`version`/`arch`/`filename`/`sha256`/`size`），上传 artifact `pkg-<name>`。`upstream_version` 来自 matrix 的 `upstream`（去掉 `tag_prefix` 的 release tag）。
-- `vcs_revision` 只对包名以 `-git` 结尾的包记录。
+- `vcs_revision` 只对包名以 `-git` 结尾的包记录（AUR 或 pkgbuild 来源）。
 
 ### publish（`.github/scripts/publish.py`）
 
@@ -115,7 +124,7 @@ packages/*.toml
   - 丢掉已不在 `packages/` 的包；
   - release 没有 manifest 时 bootstrap：下载现有资产并用 `.PKGINFO` 识别，避免清理误删。
 - 上传新包资产（`--clobber`）→ 生成完整 `manifest.json` 与完整 `SHA256SUMS` → 先上传 manifest/checksums，再删除不再被引用的 `.pkg.tar.zst`（每包只保留最新版本，debug 包也会被清理）。
-- manifest 条目：`name`、`pkgname`、`version`、`arch`、`filename`、`sha256`、`size`、`built_at`、`asset_id`、`asset_updated_at`、`url`；`-git` 包额外有 `vcs_revision`，GitHub 包有 `upstream_version`。
+- manifest 条目：`name`、`pkgname`、`version`、`arch`、`filename`、`sha256`、`size`、`built_at`、`asset_id`、`asset_updated_at`、`url`；VCS 包（名称以 `-git` 结尾）额外有 `vcs_revision`，GitHub 包有 `upstream_version`。
 - `record_versions.py` 把本次构建的 `version`、`last_built`、`vcs_revision`、`upstream_version` 写回 TOML；workflow 以 `chore(packages): record built versions [skip ci]` 提交到 main。
 - Release 未签名；本地 pacman 使用 `SigLevel = Optional TrustAll` 或 `Never`。
 
@@ -125,6 +134,7 @@ packages/*.toml
 - `version`、`last_built`、`vcs_revision`、`upstream_version` 是 workflow 管理的状态字段。删除 `last_built` 会强制下一次构建；不要手工把它们改成未实际构建的值。
 - GitHub 包的 `upstream_version` 是去掉 `tag_prefix` 的 release tag。当 tag 与构建出的 pkgver 不一致（如 `0.3.27` vs `0.3.27dev`）时必须保留，否则会每小时误重建。
 - `-git` AUR 包不要改回用 AUR RPC 的 `version` 判断更新，必须使用 `vcs_revision`。
+- 自建 PKGBUILD 位于 `pkgbuilds/<name>/`；TOML `name` 必须等于 PKGBUILD 的 `pkgname`（单包）或 `pkgbase`。VCS 包以 `-git` 结尾，prepare 按第一个 `git+` 源的 branch/tag 跟踪 commit，构建后记录 `vcs_revision`。
 - 删除 `packages/*.toml` 后，依赖 `prepare` 的 reconcile 在下一轮清理 release；不要假设删文件本身会立即删除资产。
 - AUR 构建只安装官方仓库依赖；AUR-only 运行时依赖（例如 `umbriel-git` 依赖 `xdg-desktop-portal-umbriel-git`）必须先在本仓库中构建，否则用户安装时缺依赖。
 - 新增 GitHub `mygo` 包前确认其锁定的 mygo ≥ v0.7.4；当前 workflow 不会自动升级项目里的 mygo 工具。

@@ -12,6 +12,7 @@ import fnmatch
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -74,6 +75,23 @@ def repo_version(version):
     return version.rsplit("-", 1)[0]
 
 
+def git_source(value):
+    """The git URL and ref of a source entry, when it is a git+ source."""
+    if "::" in value:
+        value = value.split("::", 1)[1]
+    if not value.startswith("git+"):
+        return None
+    value = value[len("git+"):]
+    url, _, fragment = value.partition("#")
+    url = url.split("?", 1)[0]
+    ref = "HEAD"
+    if fragment.startswith("branch="):
+        ref = "refs/heads/" + fragment[len("branch="):]
+    elif fragment.startswith("tag="):
+        ref = "refs/tags/" + fragment[len("tag="):]
+    return url, ref
+
+
 def vcs_source(aur_url):
     """The git URL and ref of an AUR package's first git+ source, if any."""
     with tempfile.TemporaryDirectory() as tmp:
@@ -95,20 +113,63 @@ def vcs_source(aur_url):
             _, sep, value = line.partition(" = ")
             if not sep:
                 continue
-            if "::" in value:
-                value = value.split("::", 1)[1]
-            if not value.startswith("git+"):
-                continue
-            value = value[len("git+"):]
-            url, _, fragment = value.partition("#")
-            url = url.split("?", 1)[0]
-            ref = "HEAD"
-            if fragment.startswith("branch="):
-                ref = "refs/heads/" + fragment[len("branch="):]
-            elif fragment.startswith("tag="):
-                ref = "refs/tags/" + fragment[len("tag="):]
-            return url, ref
+            source = git_source(value)
+            if source:
+                return source
     return None
+
+
+PKGBUILD_VAR = re.compile(
+    r"\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))"
+)
+
+
+def pkgbuild_scalar(text, field):
+    match = re.search(
+        rf"""(?m)^\s*{field}=(["']?)([^"'\s]+)\1\s*(?:#.*)?$""",
+        text,
+    )
+    return match.group(2) if match else ""
+
+
+def parse_pkgbuild(path):
+    """Read a local PKGBUILD's pkgname, pkgver, pkgrel and source entries.
+
+    This reads the simple assignments and arrays packaging uses instead of
+    executing the PKGBUILD. The file is part of this repository.
+    """
+    text = "\n".join(
+        line
+        for line in path.read_text(errors="replace").splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    fields = {
+        "pkgname": pkgbuild_scalar(text, "pkgname"),
+        "pkgbase": pkgbuild_scalar(text, "pkgbase"),
+        "pkgver": pkgbuild_scalar(text, "pkgver"),
+        "pkgrel": pkgbuild_scalar(text, "pkgrel") or "1",
+    }
+    expand = {
+        "pkgname": fields["pkgname"],
+        "pkgbase": fields["pkgbase"] or fields["pkgname"],
+        "pkgver": fields["pkgver"],
+        "pkgrel": fields["pkgrel"],
+    }
+    sources = []
+    for match in re.finditer(
+        r"(?ms)^\s*source(?:_[A-Za-z0-9_]+)?=\((.*?)\)", text
+    ):
+        try:
+            words = shlex.split(match.group(1), comments=True)
+        except ValueError:
+            continue
+        for word in words:
+            def replace(var):
+                name = var.group(1) or var.group(2)
+                return expand.get(name, var.group(0))
+
+            sources.append(PKGBUILD_VAR.sub(replace, word))
+    return fields, sources
 
 
 def latest_vcs_revision(url, ref):
@@ -189,6 +250,8 @@ def main():
             "name": name,
             "source": source,
             "method": pkg.get("method", ""),
+            "dir": "",
+            "vcs": False,
             "url": pkg.get("url", ""),
             "repo": pkg.get("repo", ""),
             "asset": pkg.get("asset", "*.pkg.tar.zst"),
@@ -244,6 +307,44 @@ def main():
                     # version comparison here would rebuild every run.
                     warn(f"{name}: could not resolve the VCS source; skipping this run")
                     continue
+                if upstream != recorded:
+                    needed = True
+
+        elif source == "pkgbuild":
+            pkgbuild = Path("pkgbuilds") / name / "PKGBUILD"
+            if not pkgbuild.is_file():
+                warn(f"{name}: {pkgbuild} does not exist, skipped")
+                continue
+            fields, sources = parse_pkgbuild(pkgbuild)
+            names = {fields["pkgname"], fields["pkgbase"]} - {""}
+            if names and name not in names:
+                raise SystemExit(
+                    f"{pkgbuild}: {name!r} does not match pkgname/pkgbase "
+                    f"({', '.join(sorted(names))})"
+                )
+            if not fields["pkgver"]:
+                warn(f"{name}: no pkgver in {pkgbuild}, skipped")
+                continue
+            entry["dir"] = str(pkgbuild.parent)
+            git_sources = [value for value in map(git_source, sources) if value]
+            if git_sources:
+                url, ref = git_sources[0]
+                latest = latest_vcs_revision(url, ref)
+                if not latest:
+                    warn(f"{name}: could not query {url}; skipping this run")
+                    continue
+                entry["upstream"] = latest
+                entry["vcs"] = True
+                recorded_rev = pkg.get("vcs_revision", "")
+                if (
+                    not pkg.get("last_built")
+                    or not recorded_rev
+                    or latest != recorded_rev
+                ):
+                    needed = True
+            else:
+                upstream = f"{fields['pkgver']}-{fields['pkgrel']}"
+                entry["upstream"] = upstream
                 if upstream != recorded:
                     needed = True
 

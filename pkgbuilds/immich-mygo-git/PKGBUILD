@@ -1,0 +1,53 @@
+# Maintainer: quantulr
+pkgname=immich-mygo-git
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Immich desktop client built with MyGo native UI'
+arch=('x86_64')
+url='https://github.com/quantulr/immich-mygo'
+license=('MIT')
+depends=('gtk3' 'webkit2gtk-4.1')
+makedepends=('git' 'go')
+options=('!strip' '!debug')
+source=('immich-mygo::git+https://github.com/quantulr/immich-mygo.git#branch=main')
+sha256sums=('SKIP')
+
+pkgver() {
+	cd "$srcdir/immich-mygo"
+	local base
+	base=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' mygo.json | head -n 1)
+	printf '%s.r%s.g%s' "${base:-0.1.0}" \
+		"$(git rev-list --count HEAD)" \
+		"$(git rev-parse --short HEAD)"
+}
+
+build() {
+	cd "$srcdir/immich-mygo"
+	go tool mygo build -platform linux/amd64 -o "$srcdir/mygo-out"
+}
+
+package() {
+	local out="$srcdir/mygo-out/linux-amd64"
+	install -d "$pkgdir/opt/immich-mygo"
+	cp -dR -- "$out/immich-mygo" "$out/.mygo-files" "$pkgdir/opt/immich-mygo/"
+	if [ -f "$out/icon.png" ]; then
+		cp -d "$out/icon.png" "$pkgdir/opt/immich-mygo/"
+	fi
+	find "$pkgdir/opt/immich-mygo" -type d -exec chmod 755 {} +
+	find "$pkgdir/opt/immich-mygo" -type f -perm /111 -exec chmod 755 {} +
+	find "$pkgdir/opt/immich-mygo" -type f ! -perm /111 -exec chmod 644 {} +
+	printf '%s' '[Desktop Entry]
+Type=Application
+Name=Immich Mygo
+Exec=/opt/immich-mygo/immich-mygo
+Icon=immich-mygo
+Categories=Utility;
+Terminal=false
+StartupWMClass=immich-mygo
+' |
+		install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/immich-mygo.desktop"
+	install -Dm644 "$out/immich-mygo-256x256.png" \
+		"$pkgdir/usr/share/icons/hicolor/256x256/apps/immich-mygo.png"
+	install -Dm644 "$out/immich-mygo-512x512.png" \
+		"$pkgdir/usr/share/icons/hicolor/512x512/apps/immich-mygo.png"
+}

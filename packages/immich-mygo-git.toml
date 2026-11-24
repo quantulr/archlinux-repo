@@ -1,0 +1,5 @@
+# 自建 PKGBUILD：按上游 main 分支的 commit 检测更新
+[package]
+name = "immich-mygo-git"
+source = "pkgbuild"
+version = "0.1.0-1"

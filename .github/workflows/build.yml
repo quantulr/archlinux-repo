@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - "packages/**"
+      - "pkgbuilds/**"
       - ".github/scripts/**"
       - ".github/workflows/build.yml"
 
@@ -52,6 +53,8 @@ jobs:
       PKG_NAME: ${{ matrix.package.name }}
       PKG_SOURCE: ${{ matrix.package.source }}
       PKG_METHOD: ${{ matrix.package.method }}
+      PKG_DIR: ${{ matrix.package.dir }}
+      PKG_VCS: ${{ matrix.package.vcs }}
       PKG_URL: ${{ matrix.package.url }}
       PKG_REPO: ${{ matrix.package.repo }}
       PKG_TAG: ${{ matrix.package.tag }}
@@ -70,13 +73,25 @@ jobs:
           echo 'builder ALL=(ALL) NOPASSWD: ALL' > /etc/sudoers.d/builder
           install -d -o builder -g builder /build
           mkdir -p /out
+      - uses: actions/checkout@v7
+        if: matrix.package.source == 'pkgbuild'
+      - name: Copy local PKGBUILD
+        if: matrix.package.source == 'pkgbuild'
+        run: |
+          set -euo pipefail
+          install -d -o builder -g builder /build/src
+          cp -a "$PKG_DIR/." /build/src/
+          chown -R builder:builder /build/src
       - name: Clone AUR package
         if: matrix.package.source == 'aur'
         run: git clone --depth 1 "$PKG_URL" /build/src
-      - name: Build AUR package
-        if: matrix.package.source == 'aur'
+      - name: Build package with makepkg
+        if: matrix.package.source == 'aur' || matrix.package.source == 'pkgbuild'
         run: |
           set -euo pipefail
+          if [ ! -f /build/src/.SRCINFO ]; then
+            su - builder -c 'cd /build/src && makepkg --printsrcinfo > .SRCINFO'
+          fi
           # Install dependencies that exist in the official repositories.
           # AUR-only dependencies (such as another package built here) are
           # left out, hence --nodeps below.
@@ -187,7 +202,7 @@ jobs:
           done < <(find /out -maxdepth 1 -name '*.pkg.tar.zst' -print0)
           test "$(jq 'length' <<<"$packages")" -gt 0
           vcs_revision=""
-          if [[ "$PKG_NAME" == *-git ]]; then
+          if [[ "${PKG_VCS:-false}" == "true" || "$PKG_NAME" == *-git ]]; then
             gitdir=$(find /build/src/src -maxdepth 4 -name .git -print -quit 2>/dev/null || true)
             if [ -n "$gitdir" ]; then
               vcs_revision=$(su - builder -c "git -C '$(dirname "$gitdir")' rev-parse HEAD" 2>/dev/null || true)
