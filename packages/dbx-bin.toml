@@ -3,5 +3,5 @@
 name = "dbx-bin"
 source = "aur"
 url = "https://aur.archlinux.org/dbx-bin.git"
-version = "0.6.73-1"
-last_built = "2026-11-24T17:25:03Z"
+version = "0.6.74-1"
+last_built = "2026-11-25T02:09:53Z"
